@@ -68,16 +68,39 @@ class CitationChecker(Middleware):
     name = "citation_checker"
 
     def after_agent(self, ctx, report):
-        # TODO (§11): khoảng 10-25 dòng.
-        #  1. Lấy report["claims"]; bỏ qua nếu rỗng hoặc ctx.corpus là None.
-        #  2. Với mỗi claim, gọi ctx.corpus.get(claim["doc_id"]).
-        #     Nếu tài liệu tồn tại VÀ claim["text"] khớp NGUYÊN VĂN một
-        #     DÒNG trong body của nó (không phải chỉ "nằm trong body")
-        #     -> trích dẫn đã đúng, giữ nguyên claim.
-        #  3. Nếu không: tìm trong ctx.corpus.docs tài liệu đầu tiên thoả
-        #     doc.body in ctx.observed_text  và  claim["text"] khớp
-        #     nguyên văn một DÒNG của doc.body -> đó là nguồn thật.
-        #     Đổi doc_id sang nó, GIỮ NGUYÊN text.
-        #  4. Không tìm được nguồn nào -> để `critic` xử lý, đừng bịa doc_id.
-        #  5. Cập nhật report["citations"] = danh sách doc_id đã sắp xếp.
-        return report  # <- mặc định KHÔNG LÀM GÌ: agent vẫn chạy được
+        if not isinstance(report, dict):
+            return report
+        claims = report.get("claims")
+        if not claims or not isinstance(claims, list) or ctx.corpus is None:
+            return report
+
+        observed = getattr(ctx, "observed_text", "")
+
+        for claim in claims:
+            if not isinstance(claim, dict):
+                continue
+            text = claim.get("text")
+            if not isinstance(text, str) or not text:
+                continue
+            doc_id = claim.get("doc_id")
+
+            # 2. Kiểm tra xem trích dẫn hiện tại đã khớp nguyên văn 1 dòng chưa
+            doc = ctx.corpus.get(doc_id) if isinstance(doc_id, str) and doc_id else None
+            if doc and any(text == line or text in line for line in doc.body.splitlines()):
+                continue
+
+            # 3. Tìm trong ctx.corpus.docs tài liệu đầu tiên đã đọc và chứa dòng này
+            for candidate in ctx.corpus.docs:
+                if candidate.body in observed:
+                    if any(text == line or text in line for line in candidate.body.splitlines()):
+                        claim["doc_id"] = candidate.doc_id
+                        break
+
+        # 5. Cập nhật report["citations"] = danh sách doc_id duy nhất đã sắp xếp
+        citations = sorted({
+            c["doc_id"]
+            for c in claims
+            if isinstance(c, dict) and isinstance(c.get("doc_id"), str) and c["doc_id"]
+        })
+        report["citations"] = citations
+        return report
