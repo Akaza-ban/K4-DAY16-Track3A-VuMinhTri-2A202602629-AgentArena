@@ -480,6 +480,12 @@ class ReActAgent:
         # one already, so a caller that does not pass one still works.
         self.corpus = corpus if corpus is not None else getattr(tools, "_corpus", None)
         self.max_steps = max(1, int(max_steps))
+        # Ensure real models get the addendum even if runner didn't pass --prompt-addendum
+        is_mock = "MockModel" in type(model).__name__ or (
+            hasattr(model, "inner") and "MockModel" in type(model.inner).__name__
+        )
+        if not is_mock and REAL_MODEL_PROMPT_ADDENDUM not in system_prompt:
+            system_prompt = system_prompt.rstrip() + "\n\n" + REAL_MODEL_PROMPT_ADDENDUM.strip()
         self.system_prompt = system_prompt
         self.last_context: AgentContext | None = None
         # Per-run bookkeeping for the two `_parse` guards. Reset in
@@ -532,6 +538,14 @@ class ReActAgent:
             ctx.messages.append({"role": "assistant", "content": text})
 
             if parsed.kind == "final":
+                if ctx.tools.calls == 0 and step < 2:
+                    self._refused_final = parsed.final if isinstance(parsed.final, dict) else {}
+                    nudge = (
+                        "Bạn chưa thực hiện tra cứu nào. Bạn BẮT BUỘC phải gọi ACTION search "
+                        "để tìm tài liệu liên quan trước khi được phép đưa ra kết luận FINAL."
+                    )
+                    ctx.messages.append({"role": "user", "content": nudge})
+                    continue
                 report = parsed.final if isinstance(parsed.final, dict) else {}
                 ctx.stop_reason = "final"
                 break
