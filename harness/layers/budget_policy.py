@@ -90,6 +90,8 @@ class BudgetPolicy(Middleware):
         limit = ctx.max_tool_calls
         if limit is None:
             return False
+        if ctx.tools.calls == 0:
+            return False
         return ctx.tools.calls >= limit - self.reserve
 
     def before_model(self, ctx, messages):

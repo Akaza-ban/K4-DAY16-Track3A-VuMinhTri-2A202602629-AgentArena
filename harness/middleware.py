@@ -312,6 +312,11 @@ class MiddlewareStack:
                     f"{layer.label}.after_agent must return a dict, got "
                     f"{type(report).__name__}"
                 )
+        if isinstance(report, dict) and report:
+            report.setdefault("answer", "")
+            report.setdefault("citations", [])
+            report.setdefault("claims", [])
+            report.setdefault("abstain", False)
         return report
 
     # -- nested wraps --------------------------------------------------
